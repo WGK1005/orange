@@ -33,13 +33,13 @@ for box, conf in zip(boxes, confs):
     if area > MIN_AREA:   # 过滤太小噪声
         filtered_boxes.append(box)
 
-# ================== 如果没有检测到 ==================
+# 如果没有检测到 
 if len(filtered_boxes) == 0:
-    print("❌ 没有检测到叶片")
+    print("没有检测到叶片")
     cv2.imwrite("result.jpg", img)
     exit()
 
-# ================== 计算中心点 ==================
+# 计算中心点 
 centers = []
 for box in filtered_boxes:
     x1, y1, x2, y2 = box
@@ -49,7 +49,7 @@ for box in filtered_boxes:
 
 centers = np.array(centers)
 
-# ================== 主茎方向（PCA） ==================
+# 主茎方向（PCA） 
 if len(filtered_boxes) >= 2:
     mean = np.mean(centers, axis=0)
     cov = np.cov(centers - mean, rowvar=False)
