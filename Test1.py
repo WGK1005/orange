@@ -9,7 +9,7 @@ def main():
     model = YOLO("yolov8s.pt")
 
     model.train(
-        data="D:\\YOLO\\corn\\leaf.v1i.yolov8\\data.yaml",
+        data="D:\\YOLO\\corn\\corn-leaf.v1i.yolov8\\data.yaml",
         epochs=150,
         imgsz=960,
         batch=8,
