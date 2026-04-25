@@ -14,8 +14,8 @@ if not IMAGE_FILE.is_file():
     raise FileNotFoundError(f"图片不存在或不是单张图片: {IMAGE_PATH}")
 
 # ================== 参数 ==================
-CONF_THRES = 0.10  # ⭐关键：和YOLO一致
-MIN_AREA = 2000     # ⭐过滤异常大/小框
+CONF_THRES = 0.10 
+MIN_AREA = 2000    
 DUPLICATE_IOU_THRES = 0.35
 OUTPUT_PATH = r"D:\YOLO\corn\code\result.jpg"
 

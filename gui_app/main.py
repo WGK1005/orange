@@ -5,7 +5,6 @@ from login_window import LoginWindow
 def main():
     app = QApplication(sys.argv)
     
-    # 设置全局农业主题样式 (绿黄色调)
     app.setStyleSheet("""
         QWidget {
             background-color: #F8FFF8;

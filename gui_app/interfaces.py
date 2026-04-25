@@ -1,6 +1,6 @@
 class AI_API:
     """内部特定训练AI的交互接口 (接入大模型API)"""
-    def __init__(self, main_model="deepseek-v3.2", weather_model="gpt-4o-mini"):
+    def __init__(self, main_model="gpt-4o-mini", weather_model="gpt-4o-mini"):
         # 默认采用 OpenAI 兼容格式的接口。如果是特定的平台(如通义、Kimi、DeepSeek等)请修改对应的 api_url 和 model 名
         self.api_url = "https://vg.v1api.cc/v1/chat/completions"
         self.api_key = "sk-TrWwKVuKA2YS5RckVJnWOH4T2XgoyL8m6j9qoMdewz3DVoEe"
@@ -32,7 +32,7 @@ class AI_API:
                 {"role": "user", "content": message}
             ]
         }
-
+# deepseek-v3.2
         try:
             response = requests.post(self.api_url, headers=headers, json=payload, timeout=15)
             if response.status_code == 200:
