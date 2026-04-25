@@ -1,10 +1,14 @@
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QTextEdit, QLineEdit, QPushButton, QLabel, 
-    QProgressBar, QSplitter, QMenuBar, QAction, QStackedWidget
+    QTextEdit, QLineEdit, QPushButton, QLabel, QComboBox, QFileDialog, QMessageBox,
+    QProgressBar, QSplitter, QMenuBar, QAction, QStackedWidget, QSizePolicy
 )
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtGui import QIcon, QFont, QTextOption, QPixmap
+import subprocess
+import shutil
+from pathlib import Path
+import sys
 from interfaces import (
     AI_API, BluetoothAPI, STM32API, CameraAPI
 )
@@ -23,6 +27,12 @@ class MainWindow(QMainWindow):
         self.bt_api = BluetoothAPI()
         self.stm32_api = STM32API()
         self.cam_api = CameraAPI()
+        self.upload_dir = Path(r"D:\YOLO\corn\assest")
+        self.upload_dir.mkdir(parents=True, exist_ok=True)
+        self.last_uploaded_image = None
+        self.cam_default_text = "📷 香橙派画面串流 "
+        self.image_query_mode = False
+        self.current_result_image_path = None
         
         # 初始化 UI
         self.init_menu()
@@ -34,20 +44,27 @@ class MainWindow(QMainWindow):
         menubar.setStyleSheet("background-color: #E8F5E9; color: #1A4D2E;")
         
         # 设置菜单
-        settings_menu = menubar.addMenu("⚙️ 设置")
+        settings_menu = menubar.addMenu("设置")
         settings_menu.addAction("系统参数...")
         settings_menu.addAction("AI 模型接口设置")
-        
+        settings_menu.addAction("API服务商:(推荐WeAPIs 注册地址https://vg.v1api.cc/v1/chat/completions)")
+        settings_menu.addAction("API key")
+        settings_menu.addAction("回复最大Token数")        
+        settings_menu.addAction("模型选择")
+        settings_menu.addAction("辅助模型")
         # 隐私菜单
-        privacy_menu = menubar.addMenu("🛡️ 隐私")
+        privacy_menu = menubar.addMenu("隐私")
         privacy_menu.addAction("清除本地日志")
         privacy_menu.addAction("数据加密配置")
-        
+        privacy_menu.addAction("账户")
         # 操作菜单
-        ops_menu = menubar.addMenu("🔧 操作")
+        ops_menu = menubar.addMenu("操作")
         ops_menu.addAction("强制重置下位机")
         ops_menu.addAction("停止所有电机动作")
-    
+        # 设备菜单
+        ops_menu = menubar.addMenu("设备")
+        ops_menu.addAction("设备序列号")
+        ops_menu.addAction("性能")
     def init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -58,8 +75,8 @@ class MainWindow(QMainWindow):
         
         # -------------------- 顶部独立导航栏 --------------------
         nav_layout = QHBoxLayout()
-        self.btn_nav_control = QPushButton("🏠 智能小车主控界面")
-        self.btn_nav_map = QPushButton("🗺️ 卫星地图与路线 (高德地图预留)")
+        self.btn_nav_control = QPushButton("智能小车主控界面")
+        self.btn_nav_map = QPushButton("卫星地图与路线 (高德地图预留)")
         
         # 样式美化
         nav_style = """
@@ -75,9 +92,10 @@ class MainWindow(QMainWindow):
         self.btn_nav_control.setStyleSheet(nav_style)
         self.btn_nav_map.setStyleSheet(nav_style)
         
+        nav_layout.addStretch(2)
         nav_layout.addWidget(self.btn_nav_control)
         nav_layout.addWidget(self.btn_nav_map)
-        nav_layout.addStretch()
+        nav_layout.addStretch(1)
         
         root_layout.addLayout(nav_layout)
 
@@ -132,7 +150,7 @@ class MainWindow(QMainWindow):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         
-        self.cam_label = QLabel("📷 香橙派画面串流 ")
+        self.cam_label = QLabel(self.cam_default_text)
         self.cam_label.setStyleSheet("background-color: #E8F5E9; border: 2px dashed #4CAF50; font-size: 24px;")
         self.cam_label.setAlignment(Qt.AlignCenter)
         self.cam_label.setMinimumSize(500, 400)
@@ -180,8 +198,47 @@ class MainWindow(QMainWindow):
         ai_title.setStyleSheet("font-weight: bold; color: #1976D2; font-size: 16px;")
         right_layout.addWidget(ai_title)
 
+        model_panel = QWidget()
+        model_panel_layout = QVBoxLayout(model_panel)
+        model_panel_layout.setContentsMargins(0, 0, 0, 0)
+        model_panel_layout.setSpacing(6)
+
+        main_model_row = QHBoxLayout()
+        main_model_label = QLabel("主模型：DeepSeek V3.2")
+        main_model_label.setStyleSheet("color: #1A4D2E; font-weight: bold;")
+        main_model_hint = QLabel("用于常规农业问答与设备推理")
+        main_model_hint.setStyleSheet("color: #5F6F5F; font-size: 12px;")
+        main_model_row.addWidget(main_model_label)
+        main_model_row.addStretch()
+        main_model_row.addWidget(main_model_hint)
+
+        weather_model_row = QHBoxLayout()
+        weather_model_label = QLabel("辅助模型：")
+        weather_model_label.setStyleSheet("color: #1A4D2E; font-weight: bold;")
+        self.weather_model_combo = QComboBox()
+        self.weather_model_combo.addItems([
+            "GPT-4o-mini（推荐，低成本）",
+            "DeepSeek 低成本轻量模型",
+            "Qwen-Turbo / 其他低成本AI"
+        ])
+        self.weather_model_combo.setCurrentIndex(0)
+        weather_model_hint = QLabel("专门回答天气相关问题")
+        weather_model_hint.setStyleSheet("color: #5F6F5F; font-size: 12px;")
+        weather_model_row.addWidget(weather_model_label)
+        weather_model_row.addWidget(self.weather_model_combo)
+        weather_model_row.addWidget(weather_model_hint)
+
+        model_panel_layout.addLayout(main_model_row)
+        model_panel_layout.addLayout(weather_model_row)
+        right_layout.addWidget(model_panel)
+
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
+        self.chat_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.chat_display.setMinimumHeight(0)
+        self.chat_display.setLineWrapMode(QTextEdit.WidgetWidth)
+        self.chat_display.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.chat_display.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.chat_display.setStyleSheet("background-color: #FFFFFF;")
         self.chat_display.append("[AI助手] 您好，专家系统已就绪，可随时分析玉米叶片剪切策略或锌肥配置方案。")
 
@@ -189,14 +246,21 @@ class MainWindow(QMainWindow):
         self.chat_input = QLineEdit()
         self.chat_input.setPlaceholderText("请输入您的问题...")
         self.send_btn = QPushButton("发送(Enter)")
+        self.upload_btn = QPushButton("上传图片并分析")
+        self.exit_image_mode_btn = QPushButton("退出图片询问模式")
+        self.exit_image_mode_btn.setEnabled(False)
 
         self.send_btn.clicked.connect(self.send_to_ai)
         self.chat_input.returnPressed.connect(self.send_to_ai)
+        self.upload_btn.clicked.connect(self.upload_and_analyze_image)
+        self.exit_image_mode_btn.clicked.connect(self.exit_image_query_mode)
 
         input_layout.addWidget(self.chat_input)
+        input_layout.addWidget(self.upload_btn)
+        input_layout.addWidget(self.exit_image_mode_btn)
         input_layout.addWidget(self.send_btn)
 
-        right_layout.addWidget(self.chat_display)
+        right_layout.addWidget(self.chat_display, 1)
         right_layout.addLayout(input_layout)
 
         splitter.addWidget(left_panel)
@@ -219,6 +283,8 @@ class MainWindow(QMainWindow):
             target_h = int(cam_w * 0.75) # 4:3 比例
             # 锁定画面高度，其他多余空间交给日志区/空白自适应
             self.cam_label.setFixedHeight(target_h)
+            if self.image_query_mode and self.current_result_image_path:
+                self.update_cam_image(self.current_result_image_path)
         except AttributeError:
             pass
 
@@ -229,6 +295,105 @@ class MainWindow(QMainWindow):
         self.chat_display.append(f"<b style='color:green;'>[控制端]:</b> {user_msg}")
         self.chat_input.clear()
         
-        reply = self.ai_api.chat_with_model(user_msg)
-        self.chat_display.append(f"<b style='color:blue;'>[AI助手]:</b> {reply}")
+        reply, model_tag = self.ai_api.chat_auto(user_msg)
+        self.chat_display.append(f"<b style='color:blue;'>[AI助手·{model_tag}]:</b> {reply}")
+
+    def upload_and_analyze_image(self):
+        image_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择要上传的图片",
+            "",
+            "图片文件 (*.jpg *.jpeg *.png *.bmp *.webp)"
+        )
+        if not image_path:
+            return
+
+        source_path = Path(image_path)
+        target_path = self.upload_dir / source_path.name
+
+        try:
+            shutil.copy2(str(source_path), str(target_path))
+            self.last_uploaded_image = target_path
+            self.chat_display.append(f"<b style='color:green;'>[图片上传]:</b> 已暂存到 {target_path}")
+        except Exception as exc:
+            QMessageBox.critical(self, "上传失败", f"图片暂存失败：{exc}")
+            return
+
+        script_path = Path(r"D:\YOLO\corn\code\Test2.py")
+        try:
+            process = subprocess.run(
+                [sys.executable, str(script_path), str(target_path)],
+                cwd=str(script_path.parent),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=180,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "运行失败", f"调用视觉脚本失败：{exc}")
+            return
+
+        if process.stdout:
+            stdout_html = process.stdout.strip().replace("\n", "<br>")
+            self.chat_display.append(f"<b style='color:#555;'>[视觉脚本输出]:</b><br>{stdout_html}")
+        if process.returncode != 0:
+            stderr_html = process.stderr.strip().replace("\n", "<br>")
+            self.chat_display.append(f"<b style='color:red;'>[视觉脚本错误]:</b><br>{stderr_html}")
+            return
+
+        result_image_path = target_path.with_name("result.jpg")
+        summary_text = self.build_image_summary(result_image_path, process.stdout)
+        helper_reply = self.ai_api.chat_with_weather_model(summary_text)
+        main_prompt = (
+            f"请根据下面由辅助模型整理的图片标注结果进行农业分析，给出简洁建议：\n"
+            f"{helper_reply}"
+        )
+        main_reply = self.ai_api.chat_with_model(main_prompt)
+
+        self.chat_display.append(f"<b style='color:#8E24AA;'>[辅助模型描述]:</b> {helper_reply}")
+        self.chat_display.append(f"<b style='color:blue;'>[主模型分析]:</b> {main_reply}")
+
+        self.enter_image_query_mode(result_image_path)
+
+    def build_image_summary(self, result_image_path: Path, stdout_text: str) -> str:
+        leaf_count = "未知"
+        for line in stdout_text.splitlines():
+            if line.startswith("✅ 完成：检测到"):
+                leaf_count = line.split("检测到", 1)[-1].split("片叶子", 1)[0].strip()
+                break
+
+        return (
+            f"已完成图片标注，检测结果图路径：{result_image_path}。"
+            f"脚本识别到的叶片数量为：{leaf_count}。"
+            "请用简洁中文描述这张图的标注结果、叶片数量和可能的农艺意义。"
+        )
+
+    def enter_image_query_mode(self, result_image_path: Path):
+        self.image_query_mode = True
+        self.current_result_image_path = Path(result_image_path)
+        self.exit_image_mode_btn.setEnabled(True)
+        self.update_cam_image(self.current_result_image_path)
+
+    def exit_image_query_mode(self):
+        self.image_query_mode = False
+        self.current_result_image_path = None
+        self.exit_image_mode_btn.setEnabled(False)
+        self.cam_label.setPixmap(QPixmap())
+        self.cam_label.setText(self.cam_default_text)
+
+    def update_cam_image(self, image_path: Path):
+        pixmap = QPixmap(str(image_path))
+        if pixmap.isNull():
+            self.cam_label.setPixmap(QPixmap())
+            self.cam_label.setText("图片加载失败")
+            return
+
+        scaled_pixmap = pixmap.scaled(
+            self.cam_label.size(),
+            Qt.KeepAspectRatio,
+            Qt.SmoothTransformation,
+        )
+        self.cam_label.setText("")
+        self.cam_label.setPixmap(scaled_pixmap)
 

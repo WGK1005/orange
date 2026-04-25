@@ -1,14 +1,18 @@
 from ultralytics import YOLO
 import cv2
 import numpy as np
+import sys
+from pathlib import Path
 
 # ================== 路径 ==================
 MODEL_PATH = r"D:\YOLO\corn\code\runs\train\corn_leaf10\weights\best.pt"
-IMAGE_PATH = r"D:\YOLO\corn\pic2\微信图片_20260414185925_495_6.jpg"
+DEFAULT_IMAGE_PATH = r"D:\YOLO\corn\pic2\微信图片_20260414185925_495_6.jpg"
+IMAGE_PATH = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_IMAGE_PATH
 # ================== 参数 ==================
-CONF_THRES = 0.10  # ⭐关键：和YOLO一致
+CONF_THRES = 0.15  # ⭐关键：和YOLO一致
 MIN_AREA = 2000     # ⭐过滤异常大/小框
 DUPLICATE_IOU_THRES = 0.35
+OUTPUT_PATH = str(Path(IMAGE_PATH).with_name("result.jpg"))
 
 # ================== 加载模型 ==================
 model = YOLO(MODEL_PATH)
@@ -93,7 +97,7 @@ filtered_boxes, filtered_confs = suppress_duplicate_boxes(
 # 如果没有检测到 
 if len(filtered_boxes) == 0:
     print("没有检测到叶片")
-    cv2.imwrite("result.jpg", img)
+    cv2.imwrite(OUTPUT_PATH, img)
     exit()
 
 # 计算中心点
@@ -146,6 +150,7 @@ cv2.putText(img, f"Count: {leaf_count}", (20, 50),
             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
 
 # ================== 保存 ==================
-cv2.imwrite("result.jpg", img)
+cv2.imwrite(OUTPUT_PATH, img)
 
 print(f"✅ 完成：检测到 {leaf_count} 片叶子，已按从下到上编号")
+print(f"RESULT_IMAGE={OUTPUT_PATH}")
