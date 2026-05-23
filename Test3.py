@@ -3,23 +3,23 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-# ================== 路径 ==================
+# 路径 
 MODEL_PATH = r"D:\YOLO\corn\code\runs\train\corn_leaf10\weights\best.pt"
 DEFAULT_IMAGE_PATH = r"D:\YOLO\corn\pic2\08.jpg"
 
-# 这里固定为单张图片路径，不再接收文件夹
+
 IMAGE_PATH = DEFAULT_IMAGE_PATH
 IMAGE_FILE = Path(IMAGE_PATH)
 if not IMAGE_FILE.is_file():
     raise FileNotFoundError(f"图片不存在或不是单张图片: {IMAGE_PATH}")
 
-# ================== 参数 ==================
+# 参数 
 CONF_THRES = 0.10 
 MIN_AREA = 2000    
 DUPLICATE_IOU_THRES = 0.35
 OUTPUT_PATH = r"D:\YOLO\corn\code\result.jpg"
 
-# ================== 加载模型 ==================
+# 加载模型 
 model = YOLO(MODEL_PATH)
 
 # ================== 推理 ==================
