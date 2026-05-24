@@ -9,6 +9,12 @@ import subprocess
 import shutil
 from pathlib import Path
 import sys
+import os
+
+# 添加上级目录到Python路径，以便导入path_manager
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from path_manager import path_manager
+
 from interfaces import (
     AI_API, BluetoothAPI, STM32API, CameraAPI
 )
@@ -27,7 +33,7 @@ class MainWindow(QMainWindow):
         self.bt_api = BluetoothAPI()
         self.stm32_api = STM32API()
         self.cam_api = CameraAPI()
-        self.upload_dir = Path(r"D:\YOLO\corn\assest")
+        self.upload_dir = path_manager.assest_dir
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.last_uploaded_image = None
         self.cam_default_text = "📷 香橙派画面串流 "
