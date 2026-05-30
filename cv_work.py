@@ -1,23 +1,25 @@
 import cv2 as cv
 import numpy as np
 import os
+from pathlib import Path
 
 # 在这里设置你的图像文件路径
+ROOT = Path(__file__).resolve().parent
 path = [
     {
         "name": "组1",
-        "base": "D:\python_code\pic\myself.webp",    # 修改为你的底图1路径
-        "overlay": "D:\python_code\pic\p1.png"  # 修改为你的覆盖图1路径
+        "base": str(ROOT / "pic" / "myself.webp"),    # 相对路径: pic/myself.webp
+        "overlay": str(ROOT / "pic" / "p1.png")  # 相对路径: pic/p1.png
     },
     {
         "name": "组2", 
-        "base": "D:\python_code\pic\myself.webp",    # 修改为你的底图2路径
-        "overlay": "D:\python_code\pic\p2.png"  # 修改为你的覆盖图2路径
+        "base": str(ROOT / "pic" / "myself.webp"),    # 相对路径: pic/myself.webp
+        "overlay": str(ROOT / "pic" / "p2.png")  # 相对路径: pic/p2.png
     },
     {
         "name": "组3",
-        "base": "D:\python_code\pic\myself.webp",    # 修改为你的底图3路径
-        "overlay": "D:\python_code\pic\p3.png"  # 修改为你的覆盖图3路径
+        "base": str(ROOT / "pic" / "myself.webp"),    # 相对路径: pic/myself.webp
+        "overlay": str(ROOT / "pic" / "p3.png")  # 相对路径: pic/p3.png
     }
 ]
 

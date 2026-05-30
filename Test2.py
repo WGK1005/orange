@@ -5,8 +5,9 @@ import sys
 from pathlib import Path
 
 # ================== 路径 ==================
-MODEL_PATH = r"D:\YOLO\corn\code\runs\train\corn_leaf10\weights\best.pt"
-DEFAULT_IMAGE_PATH = r"D:\YOLO\corn\pic2\微信图片_20260414185925_495_6.jpg"
+ROOT = Path(__file__).resolve().parent
+MODEL_PATH = str(ROOT / "runs" / "train" / "corn_leaf10" / "weights" / "best.pt")
+DEFAULT_IMAGE_PATH = str(ROOT / "pic2" / "微信图片_20260414185925_495_6.jpg")
 IMAGE_PATH = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_IMAGE_PATH
 # ================== 参数 ==================
 CONF_THRES = 0.15  # ⭐关键：和YOLO一致

@@ -1,26 +1,27 @@
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QTextEdit, QLineEdit, QPushButton, QLabel, QComboBox, QFileDialog, QMessageBox,
+    QTextEdit, QLineEdit, QPushButton, QLabel, QComboBox, QFileDialog, QMessageBox, QInputDialog,
     QProgressBar, QSplitter, QMenuBar, QAction, QStackedWidget, QSizePolicy
 )
 from PyQt5.QtCore import Qt, QSize
-from PyQt5.QtGui import QIcon, QFont, QTextOption, QPixmap
+from PyQt5.QtGui import QIcon, QFont, QTextOption, QPixmap, QTextCursor
 import subprocess
 import shutil
 from pathlib import Path
 import sys
 import os
+from html import escape as html_escape
 
 # 添加上级目录到Python路径，以便导入path_manager
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from path_manager import path_manager
 
 from interfaces import (
-    AI_API, BluetoothAPI, STM32API, CameraAPI
+    AI_API, BluetoothAPI, STM32API, CameraAPI, DatabaseAPI
 )
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, user_name="我"):
         super().__init__()
         self.setWindowTitle("🌽 农业履带小车终端系统 - 玉米剪切及施肥")
         # 设置初始基准比例
@@ -39,6 +40,8 @@ class MainWindow(QMainWindow):
         self.cam_default_text = "📷 香橙派画面串流 "
         self.image_query_mode = False
         self.current_result_image_path = None
+        self.user_name = user_name or "我"
+        self.user_avatar_path = None
         
         # 初始化 UI
         self.init_menu()
@@ -51,26 +54,49 @@ class MainWindow(QMainWindow):
         
         # 设置菜单
         settings_menu = menubar.addMenu("设置")
-        settings_menu.addAction("系统参数...")
-        settings_menu.addAction("AI 模型接口设置")
-        settings_menu.addAction("API服务商:(推荐WeAPIs 注册地址https://vg.v1api.cc/v1/chat/completions)")
-        settings_menu.addAction("API key")
-        settings_menu.addAction("回复最大Token数")        
-        settings_menu.addAction("模型选择")
-        settings_menu.addAction("辅助模型")
+        act_sys = settings_menu.addAction("系统参数...")
+        act_ai = settings_menu.addAction("AI 模型接口设置")
+        act_provider = settings_menu.addAction("API 服务提供商")
+        act_apikey = settings_menu.addAction("API key")
+        act_tokens = settings_menu.addAction("回复最大 Token 数")        
+        act_model = settings_menu.addAction("模型选择")
+        act_aux = settings_menu.addAction("辅助模型")
+        act_avatar = settings_menu.addAction("用户头像设置")
+
+        act_sys.triggered.connect(self.open_system_settings)
+        act_ai.triggered.connect(self.open_ai_settings)
+        act_provider.triggered.connect(self.set_api_provider)
+        act_apikey.triggered.connect(self.set_api_key)
+        act_tokens.triggered.connect(self.set_max_tokens)
+        act_model.triggered.connect(self.select_model)
+        act_aux.triggered.connect(self.select_aux_model)
+        act_avatar.triggered.connect(self.set_user_avatar)
+
         # 隐私菜单
         privacy_menu = menubar.addMenu("隐私")
-        privacy_menu.addAction("清除本地日志")
-        privacy_menu.addAction("数据加密配置")
-        privacy_menu.addAction("账户")
+        act_clear = privacy_menu.addAction("清除本地日志")
+        act_encrypt = privacy_menu.addAction("数据加密配置")
+        act_account = privacy_menu.addAction("账户")
+
+        act_clear.triggered.connect(self.clear_local_logs)
+        act_encrypt.triggered.connect(self.configure_encryption)
+        act_account.triggered.connect(self.manage_account)
+
         # 操作菜单
         ops_menu = menubar.addMenu("操作")
-        ops_menu.addAction("强制重置下位机")
-        ops_menu.addAction("停止所有电机动作")
+        act_reset = ops_menu.addAction("强制重置下位机")
+        act_stop = ops_menu.addAction("停止所有电机动作")
+
+        act_reset.triggered.connect(self.force_reset_lower)
+        act_stop.triggered.connect(self.stop_all_motors)
+
         # 设备菜单
-        ops_menu = menubar.addMenu("设备")
-        ops_menu.addAction("设备序列号")
-        ops_menu.addAction("性能")
+        dev_menu = menubar.addMenu("设备")
+        act_serial = dev_menu.addAction("设备序列号")
+        act_perf = dev_menu.addAction("性能")
+
+        act_serial.triggered.connect(self.show_device_serial)
+        act_perf.triggered.connect(self.show_performance)
     def init_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -199,8 +225,9 @@ class MainWindow(QMainWindow):
         right_layout = QVBoxLayout(right_panel)
         
         # 增加 DeepSeek 图标并在标题使用 HTML 布局嵌入
-        icon_path = "D:/YOLO/corn/code/gui_app/assest/deepseek.webp"
-        ai_title = QLabel(f"<img src='{icon_path}' width='28' height='28' align='middle'> 农智 AI 助手 (玉米与施肥大模型)")
+        # 使用相对路径查找资产目录下的图标（相对于本文件）
+        icon_path = Path(__file__).resolve().parent / 'assest' / 'deepseek.webp'
+        ai_title = QLabel(f"<img src='{icon_path.as_posix()}' width='28' height='28' align='middle'> 农智 AI 助手 (玉米与施肥大模型)")
         ai_title.setStyleSheet("font-weight: bold; color: #1976D2; font-size: 16px;")
         right_layout.addWidget(ai_title)
 
@@ -210,11 +237,11 @@ class MainWindow(QMainWindow):
         model_panel_layout.setSpacing(6)
 
         main_model_row = QHBoxLayout()
-        main_model_label = QLabel("主模型：DeepSeek V3.2")
-        main_model_label.setStyleSheet("color: #1A4D2E; font-weight: bold;")
+        self.main_model_label = QLabel(f"主模型：{self.ai_api.main_model}")
+        self.main_model_label.setStyleSheet("color: #1A4D2E; font-weight: bold;")
         main_model_hint = QLabel("用于常规农业问答与设备推理")
         main_model_hint.setStyleSheet("color: #5F6F5F; font-size: 12px;")
-        main_model_row.addWidget(main_model_label)
+        main_model_row.addWidget(self.main_model_label)
         main_model_row.addStretch()
         main_model_row.addWidget(main_model_hint)
 
@@ -245,8 +272,11 @@ class MainWindow(QMainWindow):
         self.chat_display.setLineWrapMode(QTextEdit.WidgetWidth)
         self.chat_display.setWordWrapMode(QTextOption.WrapAtWordBoundaryOrAnywhere)
         self.chat_display.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.chat_display.setStyleSheet("background-color: #FFFFFF;")
-        self.chat_display.append("[AI助手] 您好，专家系统已就绪，可随时分析玉米叶片剪切策略或锌肥配置方案。")
+        self.chat_display.setStyleSheet("background-color: #F7F9FB; font-size: 15px;")
+        self.append_chat_message(
+            "assistant",
+            "您好，专家系统已就绪，可随时分析玉米叶片剪切策略或锌肥配置方案。"
+        )
 
         input_layout = QHBoxLayout()
         self.chat_input = QLineEdit()
@@ -298,11 +328,11 @@ class MainWindow(QMainWindow):
         user_msg = self.chat_input.text()
         if not user_msg: return
 
-        self.chat_display.append(f"<b style='color:green;'>[控制端]:</b> {user_msg}")
+        self.append_chat_message("user", user_msg)
         self.chat_input.clear()
         
         reply, model_tag = self.ai_api.chat_auto(user_msg)
-        self.chat_display.append(f"<b style='color:blue;'>[AI助手·{model_tag}]:</b> {reply}")
+        self.append_chat_message("assistant", f"{reply}\n\n{model_tag}")
 
     def upload_and_analyze_image(self):
         image_path, _ = QFileDialog.getOpenFileName(
@@ -320,12 +350,13 @@ class MainWindow(QMainWindow):
         try:
             shutil.copy2(str(source_path), str(target_path))
             self.last_uploaded_image = target_path
-            self.chat_display.append(f"<b style='color:green;'>[图片上传]:</b> 已暂存到 {target_path}")
+            self.append_chat_message("system", f"图片已暂存到 {target_path}")
         except Exception as exc:
             QMessageBox.critical(self, "上传失败", f"图片暂存失败：{exc}")
             return
 
-        script_path = Path(r"D:\YOLO\corn\code\Test2.py")
+        # 使用仓库根目录下的 Test3.py（相对路径），方便移植
+        script_path = Path(__file__).resolve().parents[1] / "Test3.py"
         try:
             process = subprocess.run(
                 [sys.executable, str(script_path), str(target_path)],
@@ -342,10 +373,10 @@ class MainWindow(QMainWindow):
 
         if process.stdout:
             stdout_html = process.stdout.strip().replace("\n", "<br>")
-            self.chat_display.append(f"<b style='color:#555;'>[视觉脚本输出]:</b><br>{stdout_html}")
+            self.append_chat_message("system", f"视觉脚本输出：\n{process.stdout.strip()}")
         if process.returncode != 0:
             stderr_html = process.stderr.strip().replace("\n", "<br>")
-            self.chat_display.append(f"<b style='color:red;'>[视觉脚本错误]:</b><br>{stderr_html}")
+            self.append_chat_message("system", f"视觉脚本错误：\n{process.stderr.strip()}")
             return
 
         result_image_path = target_path.with_name("result.jpg")
@@ -357,8 +388,8 @@ class MainWindow(QMainWindow):
         )
         main_reply = self.ai_api.chat_with_model(main_prompt)
 
-        self.chat_display.append(f"<b style='color:#8E24AA;'>[辅助模型描述]:</b> {helper_reply}")
-        self.chat_display.append(f"<b style='color:blue;'>[主模型分析]:</b> {main_reply}")
+        self.append_chat_message("assistant", f"辅助模型描述：\n{helper_reply}")
+        self.append_chat_message("assistant", f"主模型分析：\n{main_reply}")
 
         self.enter_image_query_mode(result_image_path)
 
@@ -402,4 +433,257 @@ class MainWindow(QMainWindow):
         )
         self.cam_label.setText("")
         self.cam_label.setPixmap(scaled_pixmap)
+
+    def _build_avatar_html(self, role: str) -> str:
+        if role == "user":
+            if self.user_avatar_path and Path(self.user_avatar_path).exists():
+                avatar_src = Path(self.user_avatar_path).as_posix()
+                return (
+                    f"<img src='{avatar_src}' width='38' height='38' "
+                    f"style='border-radius:19px; border:1px solid #9AD6A7;' />"
+                )
+            fallback = html_escape((self.user_name[:1] or "U").upper())
+            return (
+                f"<span style='display:inline-block; width:38px; height:38px; line-height:38px; "
+                f"text-align:center; border-radius:14px; background:#DFF3E3; color:#2E7D32; "
+                f"font-size:16px; font-weight:700; border:1px solid #9AD6A7;'>{fallback}</span>"
+            )
+
+        return (
+            "<span style='display:inline-block; width:38px; height:38px; line-height:38px; "
+            "text-align:center; border-radius:14px; background:#E3F2FD; color:#1976D2; "
+            "font-size:16px; font-weight:700; border:1px solid #C9D6E2;'>AI</span>"
+        )
+
+    def append_chat_message(self, role: str, message: str):
+        """以聊天气泡的方式追加消息。用户右侧、AI 左侧、系统居中。"""
+        text = html_escape(message).replace("\n", "<br>")
+
+        if role == "user":
+            bubble_bg = "#DFF3E3"
+            border = "#9AD6A7"
+            label = self.user_name
+            label_color = "#2E7D32"
+            avatar_html = self._build_avatar_html("user")
+        elif role == "assistant":
+            bubble_bg = "#FFFFFF"
+            border = "#C9D6E2"
+            label = "智能体"
+            label_color = "#1976D2"
+            avatar_html = self._build_avatar_html("assistant")
+        else:
+            bubble_bg = "#EEF2F6"
+            border = "#D5DCE3"
+            label = "系统"
+            label_color = "#607D8B"
+            avatar_html = ""
+
+        if role == "user":
+            html = f"""
+            <table width='100%' cellspacing='0' cellpadding='0' style='margin:8px 0;'>
+                <tr>
+                    <td align='right'>
+                        <table cellspacing='0' cellpadding='0' style='max-width:80%;'>
+                            <tr>
+                                <td align='right' style='padding-bottom:6px;'>
+                                    <span style='font-size:14px; color:{label_color}; font-weight:700; margin-right:10px;'>{html_escape(label)}</span>
+                                    {avatar_html}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div style='background:{bubble_bg}; border:1px solid {border}; border-radius:18px; padding:14px 16px; font-size:16px; line-height:1.75; color:#1F2937; white-space:normal; text-align:left;'>{text}</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+            """
+        elif role == "assistant":
+            html = f"""
+            <table width='100%' cellspacing='0' cellpadding='0' style='margin:8px 0;'>
+                <tr>
+                    <td align='left'>
+                        <table cellspacing='0' cellpadding='0' style='max-width:80%;'>
+                            <tr>
+                                <td align='left' style='padding-bottom:6px;'>
+                                    {avatar_html}
+                                    <span style='font-size:14px; color:{label_color}; font-weight:700; margin-left:10px;'>{html_escape(label)}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    <div style='background:{bubble_bg}; border:1px solid {border}; border-radius:18px; padding:14px 16px; font-size:16px; line-height:1.75; color:#1F2937; white-space:normal; text-align:left;'>{text}</div>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+            """
+        else:
+            html = f"""
+            <div style='width:100%; margin:8px 0; text-align:center;'>
+                <div style='display:inline-block; max-width:80%;'>
+                    <div style='font-size:14px; color:{label_color}; font-weight:700; margin-bottom:6px; text-align:center;'>{html_escape(label)}</div>
+                    <div style='background:{bubble_bg}; border:1px solid {border}; border-radius:18px; padding:14px 16px; font-size:16px; line-height:1.75; color:#1F2937; white-space:normal; text-align:left;'>{text}</div>
+                </div>
+            </div>
+            """
+        self.chat_display.append(html)
+        self.chat_display.moveCursor(QTextCursor.End)
+
+    # -------------------- 菜单操作实现 --------------------
+    def open_system_settings(self):
+        QMessageBox.information(self, "系统参数", "系统参数界面暂未实现，后续可在此处添加高级配置。")
+
+    def open_ai_settings(self):
+        # 展示当前 AI 接口配置并允许修改
+        url, ok = QInputDialog.getText(self, "AI 模型接口设置", "API 地址：", text=self.ai_api.api_url)
+        if ok and url:
+            self.ai_api.api_url = url.strip()
+            QMessageBox.information(self, "已保存", f"已更新 AI 接口地址：{self.ai_api.api_url}")
+
+    def set_api_provider(self):
+        provider, ok = QInputDialog.getText(self, "API 服务提供商", "请输入第三方提供商地址或备注：", text=self.ai_api.api_url)
+        if ok and provider:
+            self.ai_api.api_url = provider.strip()
+            self.log_box.append(f"[设置] API 服务提供商已设置为：{self.ai_api.api_url}")
+
+    def set_api_key(self):
+        key, ok = QInputDialog.getText(self, "API Key", "请输入 API Key：", echo=QInputDialog.Normal)
+        if ok:
+            self.ai_api.api_key = key.strip()
+            QMessageBox.information(self, "已保存", "API Key 已更新（已隐藏显示）。")
+
+    def set_max_tokens(self):
+        tokens, ok = QInputDialog.getInt(self, "回复最大 Token 数", "请输入最大 token 数：", value=1024, min=16, max=65536)
+        if ok:
+            # 目前为演示，保存到 ai_api 的一个属性
+            setattr(self.ai_api, 'max_tokens', tokens)
+            QMessageBox.information(self, "已保存", f"回复最大 Token 数已设置为 {tokens}")
+
+    def select_model(self):
+        models = ["gpt-4o-mini", "deepseek-v3", "qwen-turbo"]
+        model, ok = QInputDialog.getItem(self, "选择主模型", "主模型：", models, current=0, editable=False)
+        if ok and model:
+            self.ai_api.main_model = model
+            # 实时更新 UI 上的主模型显示
+            if hasattr(self, 'main_model_label'):
+                self.main_model_label.setText(f"主模型：{model}")
+            QMessageBox.information(self, "已选择", f"主模型已切换为：{model}")
+
+    def select_aux_model(self):
+        items = ["GPT-4o-mini（推荐，低成本）", "DeepSeek 低成本轻量模型", "Qwen-Turbo / 其他低成本AI"]
+        sel, ok = QInputDialog.getItem(self, "选择辅助模型", "辅助模型：", items, current=0, editable=False)
+        if ok and sel:
+            # 仅演示：将选择保存为 weather_model
+            mapping = {
+                items[0]: 'gpt-4o-mini',
+                items[1]: 'deepseek-lite',
+                items[2]: 'qwen-turbo'
+            }
+            self.ai_api.weather_model = mapping.get(sel, 'gpt-4o-mini')
+            QMessageBox.information(self, "已选择", f"辅助模型已设置为：{sel}")
+
+    def set_user_avatar(self):
+        image_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择用户头像",
+            str(path_manager.assest_dir),
+            "图片文件 (*.jpg *.jpeg *.png *.bmp *.webp)"
+        )
+        if image_path:
+            self.user_avatar_path = Path(image_path)
+            # self.log_box.append(f"[设置] 用户头像已更新：{self.user_avatar_path}")
+            # QMessageBox.information(self, "已保存", "用户头像已设置成功。")
+
+    def clear_local_logs(self):
+        ok = QMessageBox.question(self, "清除日志", "确定要清除本地日志文件并清空界面日志吗？", QMessageBox.Yes | QMessageBox.No)
+        if ok == QMessageBox.Yes:
+            # 清空显示日志
+            self.log_box.clear()
+            # 删除 upload_dir 下的 .log 文件（若有）
+            try:
+                for p in self.upload_dir.glob('*.log'):
+                    p.unlink()
+                QMessageBox.information(self, "完成", "本地日志已清除。")
+            except Exception as e:
+                QMessageBox.warning(self, "部分清除失败", f"清除日志时发生错误：{e}")
+
+    def configure_encryption(self):
+        items = ["关闭", "对称加密(AES)", "不对称加密(RSA)" ]
+        sel, ok = QInputDialog.getItem(self, "数据加密配置", "请选择加密方式：", items, current=0, editable=False)
+        if ok and sel:
+            # 这里只是保存一个演示属性
+            setattr(self, 'data_encryption', sel)
+            QMessageBox.information(self, "已保存", f"数据加密配置：{sel}")
+
+    def manage_account(self):
+        # 简易账户管理：登录或注册（使用 interfaces.DatabaseAPI 的 mock）
+        db = DatabaseAPI()
+        choice, ok = QInputDialog.getItem(self, "账户", "请选择操作：", ["登录", "注册"], editable=False)
+        if not ok:
+            return
+        username, ok1 = QInputDialog.getText(self, "账户", "用户名：")
+        if not ok1:
+            return
+        password, ok2 = QInputDialog.getText(self, "账户", "密码：")
+        if not ok2:
+            return
+        if choice == "登录":
+            if db.check_login(username, password):
+                QMessageBox.information(self, "登录成功", f"欢迎，{username}。")
+            else:
+                QMessageBox.warning(self, "登录失败", "用户名或密码错误。")
+        else:
+            if db.register_user(username, password):
+                QMessageBox.information(self, "注册成功", "账户已创建，请使用登录进行验证。")
+            else:
+                QMessageBox.warning(self, "注册失败", "无法创建账户，请检查输入。")
+
+    def force_reset_lower(self):
+        ok = QMessageBox.question(self, "强制重置下位机", "确认发送重置命令到下位机？", QMessageBox.Yes | QMessageBox.No)
+        if ok == QMessageBox.Yes:
+            # 若 stm32_api 实现了 reset 方法则调用，否则只记录日志
+            if hasattr(self.stm32_api, 'reset'):
+                try:
+                    self.stm32_api.reset()
+                    self.log_box.append("[操作] 已向下位机发送重置命令。")
+                except Exception as e:
+                    QMessageBox.warning(self, "失败", f"发送重置命令失败：{e}")
+            else:
+                self.log_box.append("[操作] (模拟) 已向下位机发送重置命令。")
+                QMessageBox.information(self, "已发送", "已模拟发送重置命令（下位机接口未实现）。")
+
+    def stop_all_motors(self):
+        ok = QMessageBox.question(self, "停止电机", "确认立刻停止所有电机动作？", QMessageBox.Yes | QMessageBox.No)
+        if ok == QMessageBox.Yes:
+            # 若 bt_api 或 stm32_api 提供停止接口则调用
+            done = False
+            for api in (self.bt_api, self.stm32_api):
+                if hasattr(api, 'stop_all'):
+                    try:
+                        api.stop_all()
+                        done = True
+                    except Exception:
+                        pass
+            if done:
+                self.log_box.append("[安全] 已向设备发送停止命令。")
+                QMessageBox.information(self, "完成", "已发送停止命令。")
+            else:
+                self.log_box.append("[安全] (模拟) 已执行停止所有电机动作。")
+                QMessageBox.information(self, "已执行", "模拟停止所有电机动作（接口未实现）。")
+
+    def show_device_serial(self):
+        # 展示下位机的串口信息或序列号
+        serial_info = getattr(self.stm32_api, 'serial_port', None) or getattr(self.stm32_api, 'device_id', None) or '未知'
+        QMessageBox.information(self, "设备序列号", f"下位机串口 / 标识：{serial_info}")
+
+    def show_performance(self):
+        # 显示简单性能数据（电池与锌肥百分比）
+        batt = self.stm32_api.get_battery_level()
+        zinc = self.stm32_api.get_zinc_level()
+        QMessageBox.information(self, "性能", f"电池剩余：{batt}%\n锌肥余量：{zinc}%")
 

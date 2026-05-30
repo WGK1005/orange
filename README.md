@@ -21,9 +21,9 @@ pip install ultralytics opencv-python
 ```
 
 ### 2. 模型推理
-使用 `Test2.py` 来运行检测：
+使用 `Test3.py` 来运行检测：
 ```python
-# 修改 Test2.py 中的模型和图片路径
+# 修改 Test3.py 中的模型和图片路径
 MODEL_PATH = "runs/train/corn_leaf9/weights/best.pt"
 IMAGE_PATH = "path/to/your/image.jpg"
 ```
