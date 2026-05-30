@@ -1,7 +1,7 @@
 task: detect
 mode: train
 model: yolov8s.pt
-data: D:\YOLO\corn\corn-leaf.v1i.yolov8\data.yaml
+data: data.yaml
 epochs: 150
 time: null
 patience: 100
@@ -103,4 +103,4 @@ auto_augment: randaugment
 erasing: 0.4
 cfg: null
 tracker: botsort.yaml
-save_dir: D:\YOLO\corn\code\runs\train\corn_leaf10
+save_dir: runs/train/corn_leaf10

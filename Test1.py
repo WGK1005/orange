@@ -1,5 +1,6 @@
 from ultralytics import YOLO
 import torch
+from pathlib import Path
 
 def main():
     print("GPU是否可用:", torch.cuda.is_available())
@@ -9,7 +10,7 @@ def main():
     model = YOLO("yolov8s.pt")
 
     model.train(
-        data="D:\\YOLO\\corn\\corn-leaf.v1i.yolov8\\data.yaml",
+        data=str(Path(__file__).resolve().parent / "data" / "data.yaml"),
         epochs=150,
         imgsz=960,
         batch=8,

@@ -170,7 +170,7 @@ class LoginWindow(QWidget):
         
         if self.db_api.check_login(user, pwd):
             from main_window import MainWindow
-            self.main_app = MainWindow()
+            self.main_app = MainWindow(user_name=user)
             self.main_app.show()
             self.close()
         else:

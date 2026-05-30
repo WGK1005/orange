@@ -1,14 +1,41 @@
 from ultralytics import YOLO
 import cv2
 import numpy as np
+import sys
 from pathlib import Path
+from tkinter import Tk, filedialog
 
 # 路径 
-MODEL_PATH = r"D:\YOLO\corn\code\runs\train\corn_leaf10\weights\best.pt"
-DEFAULT_IMAGE_PATH = r"D:\YOLO\corn\pic2\08.jpg"
+ROOT = Path(__file__).resolve().parent
+MODEL_PATH = str(ROOT / "runs" / "train" / "corn_leaf10" / "weights" / "best.pt")
+DEFAULT_IMAGE_PATH = str(ROOT / "pic2" / "微信图片_20260414185925_495_6.jpg")
+
+def pick_image_path() -> str:
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        return sys.argv[1].strip()
+
+    root = Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    selected_path = filedialog.askopenfilename(
+        title="选择要检测的图片",
+        filetypes=[
+            ("图片文件", "*.jpg *.jpeg *.png *.bmp *.webp"),
+            ("所有文件", "*.*"),
+        ],
+    )
+    root.destroy()
+
+    if selected_path:
+        return selected_path
+
+    if Path(DEFAULT_IMAGE_PATH).is_file():
+        return DEFAULT_IMAGE_PATH
+
+    raise FileNotFoundError("未选择图片，且默认图片不存在")
 
 
-IMAGE_PATH = DEFAULT_IMAGE_PATH
+IMAGE_PATH = pick_image_path()
 IMAGE_FILE = Path(IMAGE_PATH)
 if not IMAGE_FILE.is_file():
     raise FileNotFoundError(f"图片不存在或不是单张图片: {IMAGE_PATH}")
@@ -17,7 +44,7 @@ if not IMAGE_FILE.is_file():
 CONF_THRES = 0.10 
 MIN_AREA = 2000    
 DUPLICATE_IOU_THRES = 0.35
-OUTPUT_PATH = r"D:\YOLO\corn\code\result.jpg"
+OUTPUT_PATH = str(IMAGE_FILE.with_name("result.jpg"))
 
 # 加载模型 
 model = YOLO(MODEL_PATH)
